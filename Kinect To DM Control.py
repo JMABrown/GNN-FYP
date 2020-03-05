@@ -7,6 +7,11 @@ import quaternion
 import cv2
 import time
 from numpy import linalg as la
+import tensorflow as tf
+from tensorflow import keras
+import glob
+import os
+import random
 
 k2dm = np.quaternion(0.5, -0.5, 0.5, 0.5)
 
@@ -166,31 +171,6 @@ def VecToQuat(vec):
     #NEED TO ASSERT THAT IT IS DIMENSION 4
     return np.quaternion(vec[0], vec[1], vec[2], vec[3])
 
-#THIS SEEMS TO REGULARLY GET SIGNS WRONG
-"""def QuatToEuler(w, x, y, z):
-    sinr_cosp = 2*(w*x + y*z)
-    cosr_cosp = 1 - 2*(x**2 + y**2)
-    roll = np.arctan2(sinr_cosp, cosr_cosp)
-    
-    sinp = 2*(w*y - z*x)
-    if (abs(sinp) >= 1):
-        pitch = np.copysign(np.pi / 2, sinp)
-    else:
-        pitch = np.arcsin(sinp)
-        
-    siny_cosp = 2*(w*z + x*y)
-    cosy_cosp = 1 - 2*(y**2 + z**2)
-    yaw = np.arctan2(siny_cosp, cosy_cosp)
-    
-    if (abs(roll - np.pi) < 0.01):
-        roll = 0
-    if (abs(pitch - np.pi) < 0.01):
-        pitch = 0
-    if (abs(yaw - np.pi) < 0.01):
-        yaw = 0
-    
-    return np.rad2deg(roll), np.rad2deg(pitch), np.rad2deg(yaw)"""
-
 # If you're flying a plane (x is forward, y is up, z is to the right)
 # Heading is NESW (yaw)
 # Attitude is up/down (pitch)
@@ -266,47 +246,42 @@ pos_legend = ["X", "Y", "Z"]
 rot_legend = ["W", "X", "Y", "Z"]
 
 unit_vec = np.array([0, 0, 1])
-#unit_quat = np.quaternion(0, 1/3**0.5, 1/3**0.5, 1/3**0.5)
 unit_quat = np.quaternion(0, 0, 0, 1)
+
+##### LOAD MULTIPLE RECORDINGS FROM ./data #####
+
+working_dir = os.path.abspath(__file__)
+data_dir = os.path.join(working_dir, "../data")
+
+all_files = glob.glob(data_dir + "/*.csv")
+episodes = {}
+
+for file in all_files:
     
-count = 0
+    count = 0
+    
+    column_header = ""
+    body_stream = []
+    for i in range(25):
+        body_stream.append([])
 
-column_header = ""
-body_stream = []
-for i in range(25):
-    body_stream.append([])
-
-#with open('knee_jerk3.csv', 'rt') as f:
-with open('thigh.csv', 'rt') as f:
-#with open('high_knees.csv', 'rt') as f:
-    csv_reader = csv.reader(f)
-
-    for line in csv_reader:
-        
-        if (count == 0):
-            column_header = line
-        else:
-            temp_line = []
-            for col in line:
-                temp_line.append(float(col))
+    with open(file, 'rt') as f:
+        csv_reader = csv.reader(f)
+    
+        for line in csv_reader:
             
-            body_stream[(count-1)%25].append(temp_line)
-        count += 1
+            if (count == 0):
+                column_header = line
+            else:
+                temp_line = []
+                for col in line:
+                    temp_line.append(float(col))
+                
+                body_stream[(count-1)%25].append(temp_line)
+            count += 1
         
-dm_body_stream = KinectToDMControl(body_stream)
-
-
-#angles = []
-#for i in range(len(body_stream[0])):
-#    knee_quat = VecToQuat(body_stream[BodyPart.KNEE_R.value][i][3:7])
-#    ankle_quat = VecToQuat(body_stream[BodyPart.ANKLE_R.value][i][3:7])
-#    knee_rot = (knee_quat.inverse() * unit_quat) * knee_quat
-#    ankle_rot = (ankle_quat.inverse() * unit_quat) * ankle_quat
-#    knee_rot_vec = np.array([knee_rot.w, knee_rot.x, knee_rot.y, knee_rot.z])
-#    ankle_rot_vec = np.array([ankle_rot.w, ankle_rot.x, ankle_rot.y, ankle_rot.z])
-#    angle = np.arccos(knee_rot_vec.dot(ankle_rot_vec)/(np.linalg.norm(knee_rot_vec)*np.linalg.norm(ankle_rot_vec)))
-#    angle_deg = np.rad2deg(angle)
-#    angles.append(angle_deg)
+    dm_body_stream = KinectToDMControl(body_stream)
+    episodes[file.title()] = dm_body_stream
 
 max_frame = 400
 
@@ -327,12 +302,109 @@ env = suite.load(domain_name="humanoid", task_name="stand")
 
 # Step through an episode and print out reward, discount and observation.
 action_spec = env.action_spec()
+action = np.zeros_like(action_spec.minimum)
 time_step = env.reset()
 
-frames = 0
+##### BODY PART DICT -> SIMULATION STATES CONVERSION #####
 
+for ep in episodes:
+    
+    current_states = []
+    desired_states = []
+    
+    episode = episodes[ep]
+
+    recording_length = len(next(iter(episode.values())))
+    
+    for i in range(recording_length-1):
+        with env.physics.reset_context():
+            env.physics.named.data.qpos[:] = 0
+            temp = env.physics.named.data.qpos['root']
+            temp[2] = 20
+            env.physics.named.data.qpos['root'] = temp
+            
+            for part_key, part_state in episode.items():
+                env.physics.named.data.qpos[part_key] = part_state[i]
+                
+        current_states.append(np.array(env.physics.named.data.qpos.tolist()))
+        
+        if (i > 0):
+            desired_states.append(np.array(env.physics.named.data.qpos.tolist()))
+        
+    current_states.pop() #remove last entry
+    
+    current_states = np.array(current_states)
+    desired_states = np.array(desired_states)
+    
+    episodes[ep] = {"input": current_states, "label": desired_states}
+
+##### FLATTENING SIMULATION STATES EPISODES INTO ONE DATASET #####
+
+all_current_states = []
+all_desired_states = []
+
+for ep in episodes:
+    episode = episodes[ep]
+    
+    recording_length = len(next(iter(episode.values())))
+    
+    for i in range(recording_length):
+        all_current_states.append(episode["input"][i])
+        all_desired_states.append(episode["label"][i])
+        
+all_current_states = np.array(all_current_states)
+all_desired_states = np.array(all_desired_states)
+
+##### NORMALISE THE DATA #####
+
+current_states_mean = np.mean(all_current_states, axis=0)
+current_states_std = np.std(all_current_states, axis=0)
+all_current_states = (all_current_states - current_states_mean)/current_states_std
+all_current_states = np.nan_to_num(all_current_states, copy=True)   # Removing NaN for fields with 0 variance
+
+desired_states_mean = np.mean(all_desired_states, axis=0)
+desired_states_std = np.std(all_desired_states, axis=0)
+all_desired_states = (all_desired_states - current_states_mean)/current_states_std
+all_desired_states = np.nan_to_num(all_desired_states, copy=True)   # Removing NaN for fields with 0 variance
+
+##### SHUFFLE THE DATASET #####
+#https://stackoverflow.com/questions/4601373/better-way-to-shuffle-two-numpy-arrays-in-unison
+def unison_shuffled_copies(a, b):
+    assert len(a) == len(b)
+    p = np.random.permutation(len(a))
+    return a[p], b[p]
+
+all_current_states, all_desired_states = unison_shuffled_copies(all_current_states, all_desired_states)
+
+##### BUILD THE MODEL #####
+model = keras.Sequential([
+    keras.layers.Dense(512, input_shape=(28,), activation='relu'),
+    keras.layers.Dense(512, activation='relu'),
+    keras.layers.Dense(28, activation='linear')
+])
+
+model.compile(optimizer='adam',
+              loss='mean_squared_error',
+              metrics=['mean_squared_error'])
+
+##### TRAIN THE MODEL #####
+model.fit(all_current_states, all_desired_states, epochs=100)
+
+##### PREDICT ROLLOUT TRAJECTORY FROM FIRST STATE #####
+states_stream = np.zeros([400, 28])
+states_stream[0,:] = (model.predict(episode["input"][0:1]))
+
+for i in range(399):
+    states_stream[i+1] = model.predict(states_stream[i:i+1]) 
+    
+##### DENORMALISE THE PREDICTED TRAJECTORY #####
+for i in range(400):
+    states_stream[i] = (states_stream[i]+desired_states_mean)*desired_states_std
+
+##### RENDER THE PREDICTED STATES WITHOUT SIMULATED PHYSICS #####
+frames = 0
 while not time_step.last():
-  for i in range(max_frame):
+  for i in range(max_frame-1):
     #time_step = env.reset()                                            #to reset the env every iteration (generating random states)
     
     #action = np.random.uniform(action_spec.minimum,
@@ -341,75 +413,33 @@ while not time_step.last():
     
     action = np.zeros_like(action_spec.minimum)     #no action
     
-    """ BETTER TO TEST ANGLES THIS WAY SO THE GUY ISNT SIMULATED """
-    with env.physics.reset_context():
-        env.physics.named.data.qpos[:] = 0
+    # BETTER TO TEST ANGLES THIS WAY SO THE GUY ISNT SIMULATED
+    with env.physics.reset_context():        
+        env.physics.named.data.qpos[:] = states_stream[i]
+    
         temp = env.physics.named.data.qpos['root']
-#        ##temp[2] = i/20
         temp[2] = 20
         env.physics.named.data.qpos['root'] = temp
         
-        for part_key, part_state in dm_body_stream.items():
-            env.physics.named.data.qpos[part_key] = part_state[frames]
-        
-#        #env.physics.named.data.qpos['right_knee'] = -3.14159
-#        #env.physics.named.data.qpos['left_knee'] = -3.14159
-#        #env.physics.named.data.qpos['left_hip_z'] = np.radians(-45)
-#        env.physics.named.data.qpos['right_hip_y'] = np.radians(-80)
-    
-    
-    #env.physics.named.data.qpos['left_shoulder1'] = 1
+        #for part_key, part_state in dm_body_stream.items():
+        #    env.physics.named.data.qpos[part_key] = part_state[frames]
     
     time_step = env.step(action)
     
-    for part_key, part_state in dm_body_stream.items():
-        env.physics.named.data.qpos[part_key] = part_state[frames]
+    #print(env.physics.get_state())
     
-#    env.physics.named.data.qpos['right_shoulder1'] = 0
-#    env.physics.named.data.qpos['right_shoulder2'] = (-np.pi/4)*(i/max_frame)
-#    env.physics.named.data.qpos['left_shoulder1'] = 0
-#    env.physics.named.data.qpos['left_shoulder2'] = (np.pi/4)*(i/max_frame)
-    
-    #env.physics.named.data.qpos['right_hip_z'] = np.radians(-50)
-    #env.physics.named.data.qpos['right_hip_y'] = np.radians(-80)
-    
-    #env.physics.named.data.qpos['left_elbow'] = np.radians(-90)
-    #env.physics.named.data.qpos['right_elbow'] = np.radians(-90)
-    
-    #env.physics.named.data.qpos['left_knee'] = np.radians(-90)
-    
-    #env.physics.named.data.qpos['abdomen_x'] = 1
-    #env.physics.named.data.qpos['abdomen_y'] = 1
-    #env.physics.named.data.qpos['abdomen_z'] = 1
-    #env.physics.named.data.qpos['right_shoulder1'] = -1
-    
-    #env.physics.named.data.geom_xpos['torso'] = [0, 0, 1.5]
-    
-    # This proves that qpos['root'][2] is vertical position
-    temp = env.physics.named.data.qpos['root']
-    ##temp[2] = i/20
-    temp[2] = 20
-    env.physics.named.data.qpos['root'] = temp
-    
-    print(env.physics.get_state())
-    
+    print(i)
     video[i] = np.hstack([env.physics.render(height, width, camera_id=0),
                           env.physics.render(height, width, camera_id=1)])
     #print(time_step.reward, time_step.discount, time_step.observation)
     
     frames += 1
     
-    if (frames >= len(body_stream[0])):
+    if (frames >= len(states_stream)):
         break
   
   print("DISPLAYING BATCH OF VIDEO")
   for i in range(max_frame):
-    #if img is None:
-    #    img = plt.imshow(video[i])
-    #else:
-    #    img.set_data(video[i])
-    #plt.pause(0.01)  # Need min display time > 0.0.
-    #plt.draw()
     cv2.imshow('Frame',video[i])
     key = cv2.waitKey(int(1000/30))
   keyboard_input = input("Type q to end (or press enter to continue): ")
