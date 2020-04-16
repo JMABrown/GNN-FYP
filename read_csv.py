@@ -48,9 +48,10 @@ body_stream = []
 for i in range(25):
     body_stream.append([])
 
-body_part = BodyPart.KNEE_L
+body_part = BodyPart.KNEE_R
 
-with open('high_knees.csv', 'rt') as f:
+#with open('high_knees.csv', 'rt') as f:
+with open('null_position.csv', 'rt') as f:
     csv_reader = csv.reader(f)
 
     for line in csv_reader:
@@ -92,13 +93,54 @@ plt.xlabel("Frame")
 plt.ylabel("Rotation Quaternion")
 plt.show()
 
-########## PLOT THE EULER ANGLES ##########
+########## ZEROED QUATERNION ##########
 
 def VecToQuat(vec):
     return np.quaternion(vec[0], vec[1], vec[2], vec[3])
 
 def QuatToVec(quat):
     return [quat.w, quat.x, quat.y, quat.z]
+
+q1 = np.quaternion(0.0, 0.707, 0.0, 0.707).inverse()
+x_plots3 = [QuatToVec(VecToQuat(body_stream[body_part.value][i][3:7])*q1) for i in range(len(body_stream[0]))]
+
+fig = plt.figure()
+ax = plt.subplot(111)
+x_axis = [i for i in range(len(x_plots3))]
+for i in range(len(x_plots3[0])):
+    ax.plot(x_axis, [x_plots3[j][i] for j in range(len(x_plots3))], label = rot_legend[i])
+ax.legend()
+plt.xlabel("Frame")
+plt.ylabel("Zeroed Quaternion")
+plt.show()
+
+########## TRANSFORMED QUATERNION ##########
+
+def VecToQuat(vec):
+    return np.quaternion(vec[0], vec[1], vec[2], vec[3])
+
+def QuatToVec(quat):
+    return [quat.w, quat.x, quat.y, quat.z]
+
+#x_plots3 = [QuatToVec(VecToQuat(body_stream[body_part.value][i][3:7]) * np.quaternion(0.5, -0.5, 0.5, -0.5).inverse() * np.quaternion(0.0, 0.707, 0, 0.707).inverse()) for i in range(len(body_stream[0]))]
+
+#x_plots3 = [QuatToVec((np.quaternion(0.5, -0.5, 0.5, 0.5) * VecToQuat(body_stream[body_part.value][i][3:7]) * np.quaternion(0.5, -0.5, 0.5, 0.5).inverse())*np.quaternion(0, 0, 0.707, -0.707).inverse()) for i in range(len(body_stream[0]))]
+
+q1 = np.quaternion(0.0, 0.707, 0.0, 0.707).inverse()
+q2 = np.quaternion(0.5, -0.5, 0.5, 0.5).inverse()
+x_plots3 = [QuatToVec(q2*VecToQuat(body_stream[body_part.value][i][3:7])*q1*q2.inverse()) for i in range(len(body_stream[0]))]
+
+fig = plt.figure()
+ax = plt.subplot(111)
+x_axis = [i for i in range(len(x_plots3))]
+for i in range(len(x_plots3[0])):
+    ax.plot(x_axis, [x_plots3[j][i] for j in range(len(x_plots3))], label = rot_legend[i])
+ax.legend()
+plt.xlabel("Frame")
+plt.ylabel("Transformed Quaternion")
+plt.show()
+
+########## PLOT THE EULER ANGLES ##########
 
 def QuatToEuler(quat):
     test = quat.x*quat.y + quat.z*quat.w
