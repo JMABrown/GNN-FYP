@@ -25,7 +25,8 @@ from graph_nets import utils_tf
 from graph_nets.demos import models
 
 BATCH_SIZE = 1
-EP_FRAMES_CUT = 60
+END_EP_FRAMES_CUT = 60
+START_EP_FRAMES_CUT = 30
 NUM_EPOCHS = 10
 STARTING_FRAME = 30
 ROLLOUT_START = 0
@@ -33,8 +34,7 @@ ROLLOUT_LEN = 100
 PLAYBACK_FRAMERATE = 30
 MAX_N_STEPS_PRED = 10
 HEIGHT_SUSPENSION = 20
-PROCESSING_STEPS_TR = 1
-PROCESSING_STEPS_GE = 1
+PROCESSING_STEPS_TR = 2
 OUTPUT_EDGE_SIZE = 1
 OUTPUT_NODE_SIZE = 1
 OUTPUT_GLOBAL_SIZE = 1
@@ -406,7 +406,7 @@ for ep in episodes:
 
     recording_length = len(next(iter(episode.values())))
     
-    for i in range(recording_length-1):
+    for i in range(START_EP_FRAMES_CUT, recording_length-1-END_EP_FRAMES_CUT):
         with env.physics.reset_context():
             env.physics.named.data.qpos[:] = 0
             temp = env.physics.named.data.qpos['root']
@@ -600,7 +600,7 @@ optimiser = tf.train.AdamOptimizer(learning_rate=dynamic_learning_rate).minimize
 
 def NStepError(all_step_preds, desired_labels, N):
         n_step_pred = [step[N-1] for step in all_pred_steps]
-        n_step_error = [(n_step_pred[i][0]['edges'] - desired_labels[i+(N-1)]['edges'])**2 for i in range(len(n_step_pred)-(N-1))]
+        n_step_error = [(n_step_pred[i][-1]['edges'] - desired_labels[i+(N-1)]['edges'])**2 for i in range(len(n_step_pred)-(N-1))]
         mean_n_step_error_bodypart = np.mean(n_step_error, axis = 0)
         mean_n_step_error_frame = np.mean(n_step_error, axis = 1)
         mean_n_step_error = np.mean(n_step_error)
@@ -616,7 +616,13 @@ def GraphsTupleToQpos(graphs_tuple, mean, std, env_len):
         # +7 is required to skip over the root pos and quat
         qpos[i+7] = (edges[i*2] + edges[(i*2)+1])/2
         qpos[i+7] = (qpos[i+7]*std[i+7]) + mean[i+7]
-    return np.array(qpos)
+    return np.array(qpos).flatten()
+
+def EdgesArrayToQpos(edges_array, env_len):
+    qpos = [0]*env_len
+    for i in range(int(len(edges_array)/2)):
+        qpos[i+7] = (edges_array[i*2] + edges_array[(i*2)+1])/2
+    return np.array(qpos).flatten()
 
 rollout_ep = list(normalised_episodes.keys())[ROLLOUT_EPISODE]
 normalised_episode = normalised_episodes[rollout_ep]
@@ -673,7 +679,7 @@ with tf.Session() as sess:
     ##### ROLLOUT PREDICITON #####
     predicted_path = []
     
-    starting_position = all_current_states[ROLLOUT_START:ROLLOUT_START+1].copy()
+    starting_position = episode['input'][ROLLOUT_START:ROLLOUT_START+1].copy()
     
     feed_dict = {graphs_tuple_ph: utils_np.data_dicts_to_graphs_tuple(starting_position)}
     predicted_next_step = sess.run(graph_predictions, feed_dict)
@@ -687,6 +693,26 @@ with tf.Session() as sess:
         feed_dict = {graphs_tuple_ph: utils_np.data_dicts_to_graphs_tuple(current_step)}
         predicted_next_steps = sess.run(graph_predictions, feed_dict)
         predicted_path.append(predicted_next_steps[-1])
+        
+    predicted_path_qpos = []
+        
+    episode_len = len(episode["label"])
+    plt.figure()
+    plt.plot([EdgesArrayToQpos(episode["label"][i]['edges'], 28)[22][0] for i in range(episode_len)], label = "right_shoulder1")
+    plt.plot([EdgesArrayToQpos(episode["label"][i]['edges'], 28)[23][0] for i in range(episode_len)], label = "right_shoulder2")
+    plt.plot([EdgesArrayToQpos(episode["label"][i]['edges'], 28)[24][0] for i in range(episode_len)], label = "right_elbow")
+    plt.xlabel('Frame')
+    plt.ylabel('Rotation (radians)')
+    plt.legend()
+    
+    episode_len = len(episode["label"])
+    plt.figure()
+    plt.plot([GraphsTupleToQpos(predicted_path[i], edges_mean, edges_std, 28)[22] for i in range(len(predicted_path))], label = "right_shoulder1")
+    plt.plot([GraphsTupleToQpos(predicted_path[i], edges_mean, edges_std, 28)[23] for i in range(len(predicted_path))], label = "right_shoulder2")
+    plt.plot([GraphsTupleToQpos(predicted_path[i], edges_mean, edges_std, 28)[24] for i in range(len(predicted_path))], label = "right_elbow")
+    plt.xlabel('Frame')
+    plt.ylabel('Rotation (radians)')
+    plt.legend()
         
     ##### N STEP PREDICTION #####
     all_pred_steps = []
@@ -712,7 +738,7 @@ with tf.Session() as sess:
         # Denormalise the output
         #print("{0} BEFORE: {1}".format(i, pred_steps[0][0]['edges']))
         for j in range(MAX_N_STEPS_PRED):
-            pred_steps[j][0]['edges'] = pred_steps[j][0]['edges']*edges_std + edges_mean
+            pred_steps[j][-1]['edges'] = pred_steps[j][-1]['edges']*edges_std + edges_mean
         #print("{0} AFTER: {1}".format(i, pred_steps[0][0]['edges']))
         
         all_pred_steps.append(copy.deepcopy(pred_steps))
@@ -723,14 +749,61 @@ with tf.Session() as sess:
     mean_five_step_error, mean_five_step_error_frame, mean_five_step_error_bodypart = NStepError(all_pred_steps, episode["label"], 5)
     mean_ten_step_error, mean_ten_step_error_frame, mean_ten_step_error_bodypart = NStepError(all_pred_steps, episode["label"], 10)
     
-    plt.plot(mean_one_step_error_frame)
-    plt.plot(mean_three_step_error_frame)
-    plt.plot(mean_five_step_error_frame)
-    plt.plot(mean_ten_step_error_frame)
-    #plt.yscale("log")
-    plt.xlabel('Frame')
-    plt.ylabel('MSE')
-    plt.show()
+mean_one_step_error_bodypart = EdgesArrayToQpos(mean_one_step_error_bodypart.flatten(), 28)
+mean_three_step_error_bodypart = EdgesArrayToQpos(mean_three_step_error_bodypart.flatten(), 28)
+mean_five_step_error_bodypart = EdgesArrayToQpos(mean_five_step_error_bodypart.flatten(), 28)
+mean_ten_step_error_bodypart = EdgesArrayToQpos(mean_ten_step_error_bodypart.flatten(), 28)
+
+plt.figure()
+plt.plot(mean_one_step_error_frame, label="1-step")
+plt.plot(mean_three_step_error_frame, label="3-step")
+plt.plot(mean_five_step_error_frame, label="5-step")
+plt.plot(mean_ten_step_error_frame, label="10-step")
+#plt.yscale("log")
+plt.xlabel('Frame')
+plt.ylabel('MSE')
+plt.legend()
+plt.show()
+
+qpos_names = ['root_pos_x', 'root_pos_y', 'root_pos_z',
+              'root_quat_w', 'root_quat_x', 'root_quat_y', 'root_pos_z',
+              'abdomen_z', 'abdomen_y', 'abdomen_x',
+              'right_hip_x', 'right_hip_z', 'right_hip_y',
+              'right_knee',
+              'right_ankle_y', 'right_ankle_x',
+              'left_hip_x', 'left_hip_z', 'left_hip_y',
+              'left_knee',
+              'left_ankle_y', 'left_ankle_x',
+              'right_shoulder1', 'right_shoulder2',
+              'right_elbow',
+              'left_shoulder1', 'left_shoulder2',
+              'left_elbow']
+#bar_width = 0.15
+#spacing = 0.15
+#plt.bar(np.arange(len(mean_one_step_error_bodypart)), tick_label = qpos_names, height = mean_one_step_error_bodypart, width=bar_width)
+#plt.bar(np.arange(len(mean_three_step_error_bodypart)) - spacing, tick_label = qpos_names, height = mean_three_step_error_bodypart, width=bar_width)
+#plt.bar(np.arange(len(mean_five_step_error_bodypart)) - spacing*2, tick_label = qpos_names, height = mean_five_step_error_bodypart, width=bar_width)
+#plt.bar(np.arange(len(mean_ten_step_error_bodypart)) - spacing*3, tick_label = qpos_names, height = mean_ten_step_error_bodypart, width=bar_width)
+#plt.xticks(rotation=60)
+#plt.yscale("log")
+#plt.show()
+
+plt.figure()
+bar_width = 0.3
+plt.bar(np.arange(len(mean_one_step_error_bodypart)), tick_label = qpos_names, height = mean_one_step_error_bodypart, width=bar_width)
+plt.bar(np.arange(len(mean_three_step_error_bodypart)) - bar_width, tick_label = qpos_names, height = mean_three_step_error_bodypart, width=bar_width)
+plt.xticks(rotation=60)
+plt.legend(["1-step", "3-step"])
+plt.show()
+
+plt.figure()
+bar_width = 0.3
+plt.bar(np.arange(len(mean_three_step_error_bodypart)), tick_label = qpos_names, height = mean_three_step_error_bodypart, width=bar_width)
+plt.bar(np.arange(len(mean_five_step_error_bodypart)) - bar_width, tick_label = qpos_names, height = mean_five_step_error_bodypart, width=bar_width)
+plt.bar(np.arange(len(mean_ten_step_error_bodypart)) - bar_width*2, tick_label = qpos_names, height = mean_ten_step_error_bodypart, width=bar_width)
+plt.xticks(rotation=60)
+plt.legend(["3-step", "5-step", "10-step"])
+plt.show()
 
 
 

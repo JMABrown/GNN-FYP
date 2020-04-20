@@ -13,11 +13,12 @@ import glob
 import os
 import random
 
-EP_FRAMES_CUT = 60
+START_EP_FRAMES_CUT = 30
+END_EP_FRAMES_CUT = 60
 NUM_EPOCHS = 10
 NUM_NEURONS = 512
-STARTING_FRAME = 30
-ROLLOUT_LEN = 100
+STARTING_FRAME = 100
+ROLLOUT_LEN = 300
 PLAYBACK_FRAMERATE = 30
 MAX_N_STEPS_PRED = 10
 ROLLOUT_EPISODE = 0
@@ -262,7 +263,7 @@ for ep in episodes:
 
     recording_length = len(next(iter(episode.values())))
     
-    for i in range(recording_length-1-EP_FRAMES_CUT):
+    for i in range(START_EP_FRAMES_CUT, recording_length-1-END_EP_FRAMES_CUT):
         with env.physics.reset_context():
             env.physics.named.data.qpos[:] = 0
             temp = env.physics.named.data.qpos['root']
@@ -407,6 +408,24 @@ while not time_step.last():
       break
 cv2.destroyAllWindows()
 
+episode_len = len(episode["label"])
+plt.figure()
+plt.plot([episode["label"][i][22] for i in range(episode_len)], label = "right_shoulder1")
+plt.plot([episode["label"][i][23] for i in range(episode_len)], label = "right_shoulder2")
+plt.plot([episode["label"][i][24] for i in range(episode_len)], label = "right_elbow")
+plt.xlabel('Frame')
+plt.ylabel('Rotation (radians)')
+plt.legend()
+
+stream_len = len(states_stream)
+plt.figure()
+plt.plot([states_stream[i][22] for i in range(stream_len)], label = "right_shoulder1")
+plt.plot([states_stream[i][23] for i in range(stream_len)], label = "right_shoulder2")
+plt.plot([states_stream[i][24] for i in range(stream_len)], label = "right_elbow")
+plt.xlabel('Frame')
+plt.ylabel('Rotation (radians)')
+plt.legend()
+
 ##### 1 STEP, 3 STEP, 5 STEP PREDICTION #####
 pred_steps = np.zeros([MAX_N_STEPS_PRED, 28])
 all_pred_steps = []
@@ -429,14 +448,58 @@ mean_three_step_error, mean_three_step_error_frame, mean_three_step_error_bodypa
 mean_five_step_error, mean_five_step_error_frame, mean_five_step_error_bodypart = NStepError(all_pred_steps, episode["label"], 5)
 mean_ten_step_error, mean_ten_step_error_frame, mean_ten_step_error_bodypart = NStepError(all_pred_steps, episode["label"], 10)
 
-plt.plot(mean_one_step_error_frame)
-plt.plot(mean_three_step_error_frame)
-plt.plot(mean_five_step_error_frame)
-plt.plot(mean_ten_step_error_frame)
+plt.figure()
+plt.plot(mean_one_step_error_frame, label="1-step")
+plt.plot(mean_three_step_error_frame, label="3-step")
+plt.plot(mean_five_step_error_frame, label="5-step")
+plt.plot(mean_ten_step_error_frame, label="10-step")
 #plt.yscale("log")
 plt.xlabel('Frame')
 plt.ylabel('MSE')
+plt.legend()
 plt.show()
+
+qpos_names = ['root_pos_x', 'root_pos_y', 'root_pos_z',
+              'root_quat_w', 'root_quat_x', 'root_quat_y', 'root_pos_z',
+              'abdomen_z', 'abdomen_y', 'abdomen_x',
+              'right_hip_x', 'right_hip_z', 'right_hip_y',
+              'right_knee',
+              'right_ankle_y', 'right_ankle_x',
+              'left_hip_x', 'left_hip_z', 'left_hip_y',
+              'left_knee',
+              'left_ankle_y', 'left_ankle_x',
+              'right_shoulder1', 'right_shoulder2',
+              'right_elbow',
+              'left_shoulder1', 'left_shoulder2',
+              'left_elbow']
+#bar_width = 0.15
+#spacing = 0.15
+#plt.bar(np.arange(len(mean_one_step_error_bodypart)), tick_label = qpos_names, height = mean_one_step_error_bodypart, width=bar_width)
+#plt.bar(np.arange(len(mean_three_step_error_bodypart)) - spacing, tick_label = qpos_names, height = mean_three_step_error_bodypart, width=bar_width)
+#plt.bar(np.arange(len(mean_five_step_error_bodypart)) - spacing*2, tick_label = qpos_names, height = mean_five_step_error_bodypart, width=bar_width)
+#plt.bar(np.arange(len(mean_ten_step_error_bodypart)) - spacing*3, tick_label = qpos_names, height = mean_ten_step_error_bodypart, width=bar_width)
+#plt.xticks(rotation=60)
+#plt.yscale("log")
+#plt.show()
+
+plt.figure()
+bar_width = 0.3
+plt.bar(np.arange(len(mean_one_step_error_bodypart)), tick_label = qpos_names, height = mean_one_step_error_bodypart, width=bar_width)
+plt.bar(np.arange(len(mean_three_step_error_bodypart)) - bar_width, tick_label = qpos_names, height = mean_three_step_error_bodypart, width=bar_width)
+plt.xticks(rotation=60)
+plt.legend(["1-step", "3-step"])
+plt.show()
+
+plt.figure()
+bar_width = 0.3
+plt.bar(np.arange(len(mean_three_step_error_bodypart)), tick_label = qpos_names, height = mean_three_step_error_bodypart, width=bar_width)
+plt.bar(np.arange(len(mean_five_step_error_bodypart)) - bar_width, tick_label = qpos_names, height = mean_five_step_error_bodypart, width=bar_width)
+plt.bar(np.arange(len(mean_ten_step_error_bodypart)) - bar_width*2, tick_label = qpos_names, height = mean_ten_step_error_bodypart, width=bar_width)
+plt.xticks(rotation=60)
+plt.legend(["3-step", "5-step", "10-step"])
+plt.show()
+
+
 
 #ViewEpisode(episodes[all_files[4].title()]['input'])
 def ViewEpisode(episode):
