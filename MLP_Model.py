@@ -408,6 +408,7 @@ while not time_step.last():
       break
 cv2.destroyAllWindows()
 
+##### PLOT RECORDED RIGHT ARM TRAJECTORIES #####
 episode_len = len(episode["label"])
 plt.figure()
 plt.plot([episode["label"][i][22] for i in range(episode_len)], label = "right_shoulder1")
@@ -417,6 +418,7 @@ plt.xlabel('Frame')
 plt.ylabel('Rotation (radians)')
 plt.legend()
 
+##### PLOT PREDICTED RIGHT ARM TRAJECTORIES #####
 stream_len = len(states_stream)
 plt.figure()
 plt.plot([states_stream[i][22] for i in range(stream_len)], label = "right_shoulder1")
@@ -443,17 +445,18 @@ def NStepError(all_step_preds, desired_labels, N):
     mean_n_step_error = np.mean(n_step_error)
     return mean_n_step_error, mean_n_step_error_frame, mean_n_step_error_bodypart
     
+##### N-STEP ERROR #####
 mean_one_step_error, mean_one_step_error_frame, mean_one_step_error_bodypart = NStepError(all_pred_steps, episode["label"], 1)
 mean_three_step_error, mean_three_step_error_frame, mean_three_step_error_bodypart = NStepError(all_pred_steps, episode["label"], 3)
 mean_five_step_error, mean_five_step_error_frame, mean_five_step_error_bodypart = NStepError(all_pred_steps, episode["label"], 5)
 mean_ten_step_error, mean_ten_step_error_frame, mean_ten_step_error_bodypart = NStepError(all_pred_steps, episode["label"], 10)
 
+##### PLOT N-STEP ERROR PER FRAME #####
 plt.figure()
 plt.plot(mean_one_step_error_frame, label="1-step")
 plt.plot(mean_three_step_error_frame, label="3-step")
 plt.plot(mean_five_step_error_frame, label="5-step")
 plt.plot(mean_ten_step_error_frame, label="10-step")
-#plt.yscale("log")
 plt.xlabel('Frame')
 plt.ylabel('MSE')
 plt.legend()
@@ -472,16 +475,8 @@ qpos_names = ['root_pos_x', 'root_pos_y', 'root_pos_z',
               'right_elbow',
               'left_shoulder1', 'left_shoulder2',
               'left_elbow']
-#bar_width = 0.15
-#spacing = 0.15
-#plt.bar(np.arange(len(mean_one_step_error_bodypart)), tick_label = qpos_names, height = mean_one_step_error_bodypart, width=bar_width)
-#plt.bar(np.arange(len(mean_three_step_error_bodypart)) - spacing, tick_label = qpos_names, height = mean_three_step_error_bodypart, width=bar_width)
-#plt.bar(np.arange(len(mean_five_step_error_bodypart)) - spacing*2, tick_label = qpos_names, height = mean_five_step_error_bodypart, width=bar_width)
-#plt.bar(np.arange(len(mean_ten_step_error_bodypart)) - spacing*3, tick_label = qpos_names, height = mean_ten_step_error_bodypart, width=bar_width)
-#plt.xticks(rotation=60)
-#plt.yscale("log")
-#plt.show()
 
+##### PLOT 1-STEP AND 3-STEP ERROR PER BODY PART #####
 plt.figure()
 bar_width = 0.3
 plt.bar(np.arange(len(mean_one_step_error_bodypart)), tick_label = qpos_names, height = mean_one_step_error_bodypart, width=bar_width)
@@ -490,6 +485,7 @@ plt.xticks(rotation=60)
 plt.legend(["1-step", "3-step"])
 plt.show()
 
+##### PLOT 3-STEP ERROR, 5-STEP, 10-STEP ERROR PER BODY PART #####
 plt.figure()
 bar_width = 0.3
 plt.bar(np.arange(len(mean_three_step_error_bodypart)), tick_label = qpos_names, height = mean_three_step_error_bodypart, width=bar_width)
@@ -499,9 +495,7 @@ plt.xticks(rotation=60)
 plt.legend(["3-step", "5-step", "10-step"])
 plt.show()
 
-
-
-#ViewEpisode(episodes[all_files[4].title()]['input'])
+##### SIMULATION PLAYBACK FOR EPISODE #####
 def ViewEpisode(episode):
     
     env = suite.load(domain_name="humanoid", task_name="stand")
