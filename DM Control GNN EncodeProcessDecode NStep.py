@@ -122,21 +122,6 @@ def KinectToDMControl(body_stream):
     dm_body_stream['right_hip_z'] = []
     
     for i in range(len(body_stream[0])):
-        #r_knee_quat = VecToQuat(body_stream[BodyPart.KNEE_R.value][i][3:7])
-        #r_ankle_quat = VecToQuat(body_stream[BodyPart.ANKLE_R.value][i][3:7])
-        #l_knee_quat = VecToQuat(body_stream[BodyPart.KNEE_L.value][i][3:7])
-        #l_ankle_quat = VecToQuat(body_stream[BodyPart.ANKLE_L.value][i][3:7])
-        #r_elbow_quat = VecToQuat(body_stream[BodyPart.ELBOW_R.value][i][3:7])
-        #r_wrist_quat = VecToQuat(body_stream[BodyPart.WRIST_R.value][i][3:7])
-        #l_elbow_quat = VecToQuat(body_stream[BodyPart.ELBOW_L.value][i][3:7])
-        #l_wrist_quat = VecToQuat(body_stream[BodyPart.WRIST_L.value][i][3:7])
-        #dm_body_stream['right_knee'].append(AngleBetweenQuat(r_knee_quat, r_ankle_quat))
-        #dm_body_stream['left_knee'].append(AngleBetweenQuat(l_knee_quat, l_ankle_quat))
-        #dm_body_stream['right_elbow'].append(AngleBetweenQuat(r_elbow_quat, r_wrist_quat))
-        #dm_body_stream['left_elbow'].append(AngleBetweenQuat(l_elbow_quat, l_wrist_quat))
-        
-        #dm_body_stream['right_shoulder1'].append(QuatToEuler(VecToQuat(body_stream[BodyPart.SHOULDER_R.value][i][3:7]))[2])
-        #dm_body_stream['right_shoulder2'].append(QuatToEuler(VecToQuat(body_stream[BodyPart.SHOULDER_R.value][i][3:7]))[1])
         
         r_hip_pos = np.array(body_stream[BodyPart.HIP_R.value][i][0:3])
         r_knee_pos = np.array(body_stream[BodyPart.KNEE_R.value][i][0:3])
@@ -154,45 +139,13 @@ def KinectToDMControl(body_stream):
         l_elbow_pos = np.array(body_stream[BodyPart.ELBOW_L.value][i][0:3])
         l_wrist_pos = np.array(body_stream[BodyPart.WRIST_L.value][i][0:3])
         
-#        forearm_bone = r_elbow_pos - r_shoulder_pos
-#        forearm_dir = forearm_bone / la.norm(forearm_bone)
-#        
-#        shoulder_axis1 = np.array([2, 1, 1])
-#        shoulder_axis1 = shoulder_axis1 / la.norm(shoulder_axis1)
-#        shoulder_axis2 = np.array([0, -1, 1])
-#        shoulder_axis2 = shoulder_axis2 / la.norm(shoulder_axis2)
-#        
-#        shoulder_angle1 = np.arccos(forearm_dir.dot(shoulder_axis1))
-#        shoulder_angle2 = np.arccos(forearm_dir.dot(shoulder_axis2))
-#        
-#        dm_body_stream['right_shoulder1'].append(shoulder_angle1 - np.pi/2)
-#        dm_body_stream['right_shoulder2'].append(shoulder_angle2 - np.pi/2)
-#        
-#        forearm_bone = l_elbow_pos - l_shoulder_pos
-#        forearm_dir = forearm_bone / la.norm(forearm_bone)
-#        
-#        shoulder_axis1 = np.array([2, -1, 1])
-#        shoulder_axis1 = shoulder_axis1 / la.norm(shoulder_axis1)
-#        shoulder_axis2 = np.array([0, 1, 1])
-#        shoulder_axis2 = shoulder_axis2 / la.norm(shoulder_axis2)
-#        
-#        shoulder_angle1 = np.arccos(forearm_dir.dot(shoulder_axis1))
-#        shoulder_angle2 = np.arccos(forearm_dir.dot(shoulder_axis2))
-#        
-#        dm_body_stream['left_shoulder1'].append(shoulder_angle1 - np.pi/2)
-#        dm_body_stream['left_shoulder2'].append(shoulder_angle2 - np.pi/2)
+        ###### This is NOT correct, but a heuristic ######
         
         dm_body_stream['right_shoulder1'].append(AngleToAxes(r_shoulder_pos, r_elbow_pos, [2, 1, 1], np.arccos) - np.pi/2)
         dm_body_stream['right_shoulder2'].append(AngleToAxes(r_shoulder_pos, r_elbow_pos, [0, -1, 1], np.arccos) - np.pi/2)
         
         dm_body_stream['left_shoulder1'].append(AngleToAxes(l_shoulder_pos, l_elbow_pos, [2, -1, 1], np.arccos) - np.pi/2)
         dm_body_stream['left_shoulder2'].append(AngleToAxes(l_shoulder_pos, l_elbow_pos, [0, 1, 1], np.arccos) - np.pi/2)
-        
-        #dm_body_stream['right_shoulder1'].append(AngleToAxes(r_shoulder_pos, r_elbow_pos, [2, 1, 1], np.arcsin))
-        #dm_body_stream['right_shoulder2'].append(AngleToAxes(r_shoulder_pos, r_elbow_pos, [0, -1, 1], np.arcsin))
-        
-        #dm_body_stream['left_shoulder1'].append(AngleToAxes(l_shoulder_pos, l_elbow_pos, [2, -1, 1], np.arcsin))
-        #dm_body_stream['left_shoulder2'].append(AngleToAxes(l_shoulder_pos, l_elbow_pos, [0, 1, 1], np.arcsin))
         
         ######
         
@@ -255,7 +208,6 @@ def AngleToAxes(pos0, pos1, axes, arctrig):
     return angle
 
 def VecToQuat(vec):
-    #NEED TO ASSERT THAT IT IS DIMENSION 4
     return np.quaternion(vec[0], vec[1], vec[2], vec[3])
 
 # If you're flying a plane (x is forward, y is up, z is to the right)
@@ -279,8 +231,6 @@ def QuatToEuler(quat):
         heading = np.arctan2(2*quat.y*quat.w - 2*quat.x*quat.z, 1 - 2*sqy - 2*sqz)
         attitude = np.arcsin(2*test)
         bank = np.arctan2(2*quat.x*quat.w - 2*quat.y*quat.z, 1 - 2*sqx - 2*sqz)
-    #return [rot in x, rot in y, rot in z] 
-    #return [heading, attitude, bank]
     return [bank, heading, attitude]    #x, y, z
 
 def Test_QuatToEuler():
@@ -476,30 +426,11 @@ def NormaliseGraphAttribute(graphs_list, attribute, attribute_mean = None, attri
         
     return normalised_graphs_list, attribute_mean, attribute_std
 
-#num_graphs = all_current_states.size
-#edges_sum = np.zeros_like(all_current_states[0]['edges'])
-#edges_std_sum = np.zeros_like(all_current_states[0]['edges'])
-#for g in all_current_states:
-#    edges_sum += g['edges']
-#    
-#edges_mean = edges_sum / num_graphs
-#    
-#edges_stds = []
-#for g in all_current_states:
-#    edges_stds.append(g['edges'] - edges_mean)
-#    
-#edges_stds = np.array(edges_stds)
-#edges_stds = edges_stds**2
-#edges_std = (np.sum(edges_stds, axis = 0) / num_graphs)**0.5
-#
-#for i in range(num_graphs):
-#    all_current_states[i]['edges'] = (all_current_states[i]['edges'] - edges_mean) / edges_std
-#    all_current_states[i]['edges'] = np.nan_to_num(all_current_states[i]['edges'])
-
-#all_current_states, nodes_mean, nodes_std = NormaliseGraphAttribute(all_current_states, 'nodes')   #Leave these unnormalised as they are all the same
 all_current_states, edges_mean, edges_std = NormaliseGraphAttribute(all_current_states, 'edges')
 
 all_desired_states, edges_mean, edges_std = NormaliseGraphAttribute(all_desired_states, 'edges')
+
+##### NORMALISE EPISODES #####
 
 normalised_episodes = {}
 for ep in episodes:
@@ -508,22 +439,14 @@ for ep in episodes:
     episode_label, _, _ =  NormaliseGraphAttribute(normalised_episode['label'], 'edges', edges_mean, edges_std)
     normalised_episodes[ep] = {"input": episode_input, "label": episode_label}
 
+##### FIX NAN FROM NORMALISATION #####
+
 nan_count = 0
 for state in all_current_states:
     nan_count += np.sum(np.isnan(state['edges']))
     nan_count += np.sum(np.isnan(state['nodes']))
     nan_count += np.sum(np.isnan(state['globals']))
 assert(nan_count == 0)
-
-#current_states_mean = np.mean(all_current_states, axis=0)
-#current_states_std = np.std(all_current_states, axis=0)
-#all_current_states = (all_current_states - current_states_mean)/current_states_std
-#all_current_states = np.nan_to_num(all_current_states, copy=True)   # Removing NaN for fields with 0 variance
-
-#desired_states_mean = np.mean(all_desired_states, axis=0)
-#desired_states_std = np.std(all_desired_states, axis=0)
-#all_desired_states = (all_desired_states - current_states_mean)/current_states_std
-#all_desired_states = np.nan_to_num(all_desired_states, copy=True)   # Removing NaN for fields with 0 variance
 
 ##### SHUFFLE THE DATASET #####
 #https://stackoverflow.com/questions/4601373/better-way-to-shuffle-two-numpy-arrays-in-unison
@@ -535,22 +458,10 @@ def unison_shuffled_copies(a, b):
 all_current_states, all_desired_states = unison_shuffled_copies(all_current_states, all_desired_states)
 
 
-"""class MyMLP(snt.Module):
-    def __init__(self, name=None):
-        super(MyMLP, self).__init__(name=name)
-        self.hidden1 = snt.Linear(1024, name="hidden1")
-        self.output = snt.Linear(1, name="output")
-        
-    def __call__(self, x):
-        x = self.hidden1(x)
-        x = tf.nn.relu(x)
-        x = self.output(x)
-        return x"""
-
-
 # Create the model
 tf.reset_default_graph()
 
+# Older former model
 """graph_network = modules.GraphNetwork(
     #edge_model_fn=lambda: snt.Linear(output_size=OUTPUT_EDGE_SIZE),
     edge_model_fn=lambda: snt.nets.MLP([256, 256, 1]),
@@ -560,6 +471,7 @@ tf.reset_default_graph()
     #global_model_fn=lambda: snt.Linear(output_size=OUTPUT_GLOBAL_SIZE))
     global_model_fn=lambda: snt.nets.MLP([256, 256, 1]))"""
 
+# ENCODE PROCESS DECODE NETWORK
 graph_network = models.EncodeProcessDecode(edge_output_size=1)
 
 def concat_in_list(numpy_list):
@@ -696,6 +608,7 @@ with tf.Session() as sess:
         
     predicted_path_qpos = []
         
+    ##### COLLAPSE EPISODE TO QPOS TO PLOT THE ARM POSITION #####
     episode_len = len(episode["label"])
     plt.figure()
     plt.plot([EdgesArrayToQpos(episode["label"][i]['edges'], 28)[22][0] for i in range(episode_len)], label = "right_shoulder1")
@@ -705,6 +618,7 @@ with tf.Session() as sess:
     plt.ylabel('Rotation (radians)')
     plt.legend()
     
+    ##### COLLAPSE PREDICTED PATH TO QPOS TO PLOT THE ARM POSITION #####
     episode_len = len(episode["label"])
     plt.figure()
     plt.plot([GraphsTupleToQpos(predicted_path[i], edges_mean, edges_std, 28)[22] for i in range(len(predicted_path))], label = "right_shoulder1")
@@ -743,23 +657,24 @@ with tf.Session() as sess:
         
         all_pred_steps.append(copy.deepcopy(pred_steps))
         
-    # Comparing results must be denormalised
+    ##### N-STEP ERROR #####
     mean_one_step_error, mean_one_step_error_frame, mean_one_step_error_bodypart = NStepError(all_pred_steps, episode["label"], 1)
     mean_three_step_error, mean_three_step_error_frame, mean_three_step_error_bodypart = NStepError(all_pred_steps, episode["label"], 3)
     mean_five_step_error, mean_five_step_error_frame, mean_five_step_error_bodypart = NStepError(all_pred_steps, episode["label"], 5)
     mean_ten_step_error, mean_ten_step_error_frame, mean_ten_step_error_bodypart = NStepError(all_pred_steps, episode["label"], 10)
     
+#### COLLAPSE N-STEP PER EDGE TO PER BODY PART #####
 mean_one_step_error_bodypart = EdgesArrayToQpos(mean_one_step_error_bodypart.flatten(), 28)
 mean_three_step_error_bodypart = EdgesArrayToQpos(mean_three_step_error_bodypart.flatten(), 28)
 mean_five_step_error_bodypart = EdgesArrayToQpos(mean_five_step_error_bodypart.flatten(), 28)
 mean_ten_step_error_bodypart = EdgesArrayToQpos(mean_ten_step_error_bodypart.flatten(), 28)
 
+##### PLOT N-STEP ERROR ACROSS EPISODE #####
 plt.figure()
 plt.plot(mean_one_step_error_frame, label="1-step")
 plt.plot(mean_three_step_error_frame, label="3-step")
 plt.plot(mean_five_step_error_frame, label="5-step")
 plt.plot(mean_ten_step_error_frame, label="10-step")
-#plt.yscale("log")
 plt.xlabel('Frame')
 plt.ylabel('MSE')
 plt.legend()
@@ -778,16 +693,8 @@ qpos_names = ['root_pos_x', 'root_pos_y', 'root_pos_z',
               'right_elbow',
               'left_shoulder1', 'left_shoulder2',
               'left_elbow']
-#bar_width = 0.15
-#spacing = 0.15
-#plt.bar(np.arange(len(mean_one_step_error_bodypart)), tick_label = qpos_names, height = mean_one_step_error_bodypart, width=bar_width)
-#plt.bar(np.arange(len(mean_three_step_error_bodypart)) - spacing, tick_label = qpos_names, height = mean_three_step_error_bodypart, width=bar_width)
-#plt.bar(np.arange(len(mean_five_step_error_bodypart)) - spacing*2, tick_label = qpos_names, height = mean_five_step_error_bodypart, width=bar_width)
-#plt.bar(np.arange(len(mean_ten_step_error_bodypart)) - spacing*3, tick_label = qpos_names, height = mean_ten_step_error_bodypart, width=bar_width)
-#plt.xticks(rotation=60)
-#plt.yscale("log")
-#plt.show()
 
+##### PLOT 1-STEP AND 3-STEP ERROR PER BODY PART #####
 plt.figure()
 bar_width = 0.3
 plt.bar(np.arange(len(mean_one_step_error_bodypart)), tick_label = qpos_names, height = mean_one_step_error_bodypart, width=bar_width)
@@ -796,6 +703,7 @@ plt.xticks(rotation=60)
 plt.legend(["1-step", "3-step"])
 plt.show()
 
+##### PLOT 3-STEP ERROR, 5-STEP ERROR, 10-STEP ERROR PER BODY PART #####
 plt.figure()
 bar_width = 0.3
 plt.bar(np.arange(len(mean_three_step_error_bodypart)), tick_label = qpos_names, height = mean_three_step_error_bodypart, width=bar_width)
@@ -805,7 +713,7 @@ plt.xticks(rotation=60)
 plt.legend(["3-step", "5-step", "10-step"])
 plt.show()
 
-
+##### VISUALISE ROLLOUT TRAJECTORY #####
 
 for i, step in enumerate(predicted_path):
     
